@@ -41,8 +41,8 @@ def loadData(filePath):
     for root, dirs, files in os.walk(filePath):  # 遍历统计
         for each in files:
             count += 1
-    data_x = np.arange(count*15000*53*2,dtype=float).reshape(count,2,15000,53)
-    data_xP = np.arange(count * 15000 * 53 * 2, dtype=float).reshape(count, 2, 15000, 53)
+    data_x = np.arange(count*15000*53*3,dtype=float).reshape(count,3,15000,53)
+    data_xP = np.arange(count * 15000 * 53 * 3, dtype=float).reshape(count, 3, 15000, 53)
     data_y = np.arange(count,dtype=int).reshape(count,1)
     count = 0
     for eachInfo in os.listdir(filePath):
@@ -51,33 +51,35 @@ def loadData(filePath):
         temp_y = data.iloc[39,2]
         file = open(filePath+'\\' + eachInfo, 'r')
         data = pd.read_csv(file, header= 40,skip_blank_lines=False)
-        temp_x = np.arange(15000 * 53 * 2, dtype=float).reshape(2, 15000, 53)
+        temp_x = np.arange(15000 * 53 * 3, dtype=float).reshape(3, 15000, 53)
         for i in range(1, 54):
             temp_x[0, :, i - 1] = data['CH' + str(i) + '(690)'].tolist()
             if (i==1)|(i==4)|(i==10):
                 temp_x[1, :, i - 1] = data['CH' + str(i) + '(832)'].tolist()
             else:
                 temp_x[1, :, i - 1] = data['CH' + str(i) + '(830)'].tolist()
+            temp_x[2,:,i-1] = temp_x[0,:,i-1]+temp_x[0,:,i-1]
         data_x[count,:,:,:] = temp_x
         data_y[count,0] = int(temp_y)
         count = count + 1
         print(eachInfo)
     for i in range(count):
-        for j in range(0,2):
+        for j in range(0,3):
             for k in range(0,53):
                 data_xP[i,j,:,k] = rhythmExtraction(data_x[i,j,:,k],0,0.6,200,len(data_x[i,j,:,k]))
-    train_x,test_x,train_y,test_y = train_test_split(data_xP,data_y,test_size=0.3)
-    train_y1 = one_hot(train_y)
-    test_y1 = one_hot(test_y)
-    #plotTend(data_x)
-    return train_x,test_x,train_y1,test_y1,train_y,test_y
+    return data_xP,data_y
+    # train_x,test_x,train_y,test_y = train_test_split(data_xP,data_y,test_size=0.3)
+    # train_y1 = one_hot(train_y)
+    # test_y1 = one_hot(test_y)
+    # #plotTend(data_x)
+    # return train_x,test_x,train_y1,test_y1,train_y,test_y
 
 #计算每个通道的平均值
 def averageFeature(data):
     count = len(data)
-    averageData = np.arange(count * 53 * 2,dtype=float).reshape(count,106)
+    averageData = np.arange(count * 53 * 3,dtype=float).reshape(count,159)
     for i in range(count):
-        for j in range(2):
+        for j in range(3):
             for k in range(53):
                 averageData[i,j*53+k] = np.average(data[i,j,:,k])
     return averageData
@@ -143,14 +145,6 @@ def rhythmExtraction(oneFrame, f_low, f_high, fs, frameLength):
     return y_time
 
 
-def fda(x_1,Fstop1,Fstop2): #（输入的信号，截止频率下限，截止频率上限）
-    fs = 200
-    #b,a = signal.butter(3,[0.001,0.1],'bandpass')
-    b, a = signal.butter(8,[2.0*Fstop1/fs,2.0*Fstop2/fs],'bandpass')
-    filtedData = signal.filtfilt(b,a,x_1)
-    return filtedData
-
-
 def mulPca(trainData,testData):
     # 将特征值进行标准化处理
     std = StandardScaler()
@@ -177,127 +171,115 @@ def lda(trainData,testData,train_y):
     # 将降维后的数据进行返回
     return train_x, test_x
 
-def differentClassify(trainX,trainY,testX,testY):
-    h = .02  # step size in the mesh
-
-    names = ["Nearest Neighbors", "Linear SVM", "RBF SVM",
-             "Decision Tree", "Random Forest", "AdaBoost",
-             "Naive Bayes", "QDA", "Gaussian Process", "Neural Net", ]
-
-    classifiers = [
-        KNeighborsClassifier(4),
-        SVC(kernel="linear", C=0.025),
-        SVC(gamma=2, C=1),
-        DecisionTreeClassifier(max_depth=5),
-        RandomForestClassifier(max_depth=5, n_estimators=10, max_features=1),
-        AdaBoostClassifier(),
-        GaussianNB(),
-        QuadraticDiscriminantAnalysis(),
-        # GaussianProcess(),
-        # BernoulliRBM(),
-    ]
-    for key in classifiers:
-        clf = key.fit(trainX,trainY)
-        print("Score:")
-        print(clf.score(testX,testY))
-
-def plotAcc(classAcc):
-    plt.figure(figsize=(15,8))
+def plotAcc(kernel,classAcc):
+    plt.figure(figsize=(8,5))
     x = np.linspace(0, 53, 53)
     plt.subplot(3, 1, 1)
     plt.ylim(0,1)
-    plt.title("Oxy")
-    plt.ylabel("Accuracy")
+    plt.title(kernel)
+    plt.xlabel("Channel")
+    plt.ylabel("Oxy-Accuracy")
     plt.bar(x,classAcc[0,:])
     plt.subplot(3, 1, 2)
     plt.ylim(0, 1)
-    plt.title("Deoxy")
-    plt.ylabel("Accuracy")
+    plt.xlabel("Channel")
+    plt.ylabel("Deoxy-Accuracy")
     plt.bar(x, classAcc[1,:])
     plt.subplot(3, 1, 3)
     plt.ylim(0, 1)
-    plt.title("TotalOxy")
     plt.xlabel("Channel")
-    plt.ylabel("Accuracy")
+    plt.ylabel("Total-Accuracy")
     plt.bar(x, classAcc[2,:])
     plt.legend()
     plt.show()
+#对单个通道使用SVM分别进行分类，观察每个通道的有效性
+def singleSVM(train_data,train_y,test_data,test_y):
+    classAcc = np.arange(3*3 * 53, dtype=float).reshape(3, 3, 53)
+    for type in range(3):
+        for channel in range(53):
+            random_state = np.random.RandomState(0)
+            svmModel1 = OneVsRestClassifier(svm.SVC(kernel='linear', C = 2, probability=True, random_state=random_state))
+            svmModel2 = OneVsRestClassifier(svm.SVC(kernel='rbf', C=2, gamma = 1e-3,probability=True, random_state=random_state))
+            svmModel3 = OneVsRestClassifier(svm.SVC(kernel='poly', C=2, gamma = 1e-3,probability=True, random_state=random_state))
+            clt1 = svmModel1.fit(train_data[:, type * 53 + channel].reshape(-1, 1), train_y)
+            score1 = clt1.score(test_data[:, type * 53 + channel].reshape(-1, 1), test_y)
+            clt2 = svmModel2.fit(train_data[:, type * 53 + channel].reshape(-1, 1), train_y)
+            score2 = clt2.score(test_data[:, type * 53 + channel].reshape(-1, 1), test_y)
+            clt3 = svmModel3.fit(train_data[:, type * 53 + channel].reshape(-1, 1), train_y)
+            score3 = clt3.score(test_data[:, type * 53 + channel].reshape(-1, 1), test_y)
+            classAcc[0][type][channel] = score1
+            classAcc[1][type][channel] = score2
+            classAcc[2][type][channel] = score3
+    f = open('SVM各个通道分析', 'ab')
+    np.savetxt(f, classAcc[0], delimiter=',')
+    np.savetxt(f, classAcc[1], delimiter=',')
+    np.savetxt(f, classAcc[2], delimiter=',')
+    plotAcc("Linear",classAcc[0])
+    plotAcc("Rbf",classAcc[1])
+    plotAcc("Poly",classAcc[2])
 
+#对单个通道使用KNN分别进行分类，观察每个通道的有效性
+def singleKNN(train_data,train_y,test_data,test_y):
+    classAcc = np.arange(3 * 3 * 53, dtype=float).reshape(3, 3, 53)
+    for type in range(3):
+        for channel in range(53):
+            knnModel1 = KNeighborsClassifier(n_neighbors=3)
+            knnModel2 = KNeighborsClassifier(n_neighbors=5)
+            knnModel3 = KNeighborsClassifier(n_neighbors=6)
+            clt1 = knnModel1.fit(train_data[:, type * 53 + channel].reshape(-1, 1), train_y)
+            score1 = clt1.score(test_data[:, type * 53 + channel].reshape(-1, 1), test_y)
+            clt2 = knnModel2.fit(train_data[:, type * 53 + channel].reshape(-1, 1), train_y)
+            score2 = clt2.score(test_data[:, type * 53 + channel].reshape(-1, 1), test_y)
+            clt3 = knnModel3.fit(train_data[:, type * 53 + channel].reshape(-1, 1), train_y)
+            score3 = clt3.score(test_data[:, type * 53 + channel].reshape(-1, 1), test_y)
+            classAcc[0][type][channel] = score1
+            classAcc[1][type][channel] = score2
+            classAcc[2][type][channel] = score3
+    f = open('KNN各个通道分析.txt', 'ab')
+    np.savetxt(f, classAcc[0], delimiter=',')
+    np.savetxt(f, classAcc[1], delimiter=',')
+    np.savetxt(f, classAcc[2], delimiter=',')
+    plotAcc("K = 3", classAcc[0])
+    plotAcc("K = 5", classAcc[1])
+    plotAcc("K = 6", classAcc[2])
 
+def plotSingle(dataX):
+    count = len(dataX)
+    for i in range(53):
+        channel = "Channel " + str(i)
+        plt.figure(figsize=(15,8))
+        x = np.linspace(0, 150, 15000)
+        plt.subplot(3, 1, 1)
+        plt.title(channel)
+        plt.ylabel("Oxy-Hb/mMmm")
+        for j in range(count):
+            plt.plot(x,dataX[j,0,:,i])
+        plt.subplot(3, 1, 2)
+        plt.ylabel("Deoxy-Hb/mMmm")
+        for j in range(count):
+            plt.plot(x,dataX[j,1,:,i])
+        plt.subplot(3, 1, 3)
+        plt.xlabel("Time/s")
+        plt.ylabel("Total-Hb/mMmmy")
+        for j in range(count):
+            plt.plot(x,dataX[j,2,:,i])
+        #plt.legend()
+        plt.savefig("D:\各通道原始数据图\\"+channel+".png")
 
-'''
-可用，SVM和KNN实现四分类。平均值作为特征值
-'''
+#TempDataset
+#DepressionDataset - 2
+
 if __name__=="__main__":
     #获取数据
-    train_x, test_x, train_y1, test_y1,train_y,test_y = loadData('T:\BaiduNetdiskDownload\DepressionDataset\DepressionDataset - 2')
+    dataX,dataY = loadData('T:\BaiduNetdiskDownload\DepressionDataset\DepressionDataset - 2')
+    train_x, test_x, train_y, test_y = train_test_split(dataX, dataY, test_size=0.3)
     averageTrainX = averageFeature(train_x)
-    averageTestX = averageFeature(test_x)
-    classAcc = np.arange(3*53,dtype = float).reshape(3,53)
-    deoxyAcc = np.arange(len(test_x[0]))
-    totaloxyAcc = np.arange(len(test_x[0]))
-    tuned_parameters = [{'kernel': ['rbf'], 'gamma': [1e-3, 1e-4],
-                         'C': [1, 10, 100, 1000]},
-                        {'kernel': ['linear'], 'C': [1, 10, 100, 1000]},
-                        {'kernel':['poly'],'gamma': [1e-3, 1e-4],'C': [1, 10, 100, 1000]}]
-    scores = ['precision', 'recall']
-
-
-
-
-    for type in range(2):
-        for channel in range(53):
-            #print("# Tuning hyper-parameters for %s" % score)
-            #clf = GridSearchCV(SVC(), tuned_parameters, cv=5,                               scoring='%s_macro' % score)
-            random_state = np.random.RandomState(0)
-            svmModel = OneVsRestClassifier(svm.SVC(kernel='linear', probability=True, random_state=random_state))
-            clt = svmModel.fit(averageTrainX[:,type*53+channel].reshape(-1,1),train_y)
-            score = clt.score(averageTestX[:,type*53+channel].reshape(-1,1),test_y)
-            #score = cross_val_score(clt,averageTrainX[:,type*53+channel].reshape(-1,1),train_y,cv=5)
-            classAcc[type][channel] = score
-    #求总血红蛋白的和
-    #训练集求总和,求平均值
-    train_totalOxy = np.arange(len(train_x)*15000*53,dtype = float).reshape(len(train_x),15000,53)
-    train_averageTotalOxy = np.arange(len(train_x)*53,dtype = float).reshape(len(train_x),53)
-    for count in range(len(train_x)):
-        for channel in range(53):
-            train_totalOxy[count,:,channel] = train_x[count,0,:,channel]+train_x[count,1,:,channel]
-            train_averageTotalOxy[count,channel] = np.average(train_totalOxy[count,:,channel])
-    #测试集求平均值
-    test_totalOxy = np.arange(len(test_x) * 15000 * 53, dtype=float).reshape(len(test_x), 15000, 53)
-    test_averageTotalOxy = np.arange(len(test_x) * 53, dtype=float).reshape(len(test_x), 53)
-    for count in range(len(test_x)):
-        for channel in range(53):
-            test_totalOxy[count, :, channel] = test_x[count, 0, :, channel] + test_x[count, 1, :, channel]
-            test_averageTotalOxy[count, channel] = np.average(train_totalOxy[count, :, channel])
-    for channel in range(53):
-        random_state = np.random.RandomState(0)
-        svmModel = OneVsRestClassifier(svm.SVC(kernel='linear', probability=True, random_state=random_state))
-        clt = svmModel.fit(train_averageTotalOxy[:,channel].reshape(-1, 1), train_y)
-        score = clt.score(test_averageTotalOxy[:,channel].reshape(-1, 1), test_y)
-        #score = cross_val_score(clt, test_averageTotalOxy[:,channel].reshape(-1, 1), test_y, cv=5)
-        classAcc[2][channel] = score
-    print(classAcc)
-    plotAcc(classAcc)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    averateTestX = averageFeature(test_x)
+    #对单个通道使用SVM分别进行分类，观察每个通道的有效性
+    #singleSVM(averageTrainX,train_y,averateTestX,test_y)
+    # 对单个通道使用KNN分别进行分类，观察每个通道的有效性
+    #singleKNN(averageTrainX, train_y, averateTestX, test_y)
+    # plotSingle(dataX)
 
 
 
