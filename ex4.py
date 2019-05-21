@@ -18,12 +18,14 @@ from sklearn.datasets import make_moons, make_circles, make_classification
 from sklearn.neural_network import BernoulliRBM
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
+from sklearn.metrics import classification_report
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
 from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import confusion_matrix
 
 
 
@@ -151,11 +153,9 @@ def mulPca(trainData,testData):
     train_x = std.fit_transform(trainData)
     test_x = std.transform(testData)
     # 进行PCA降维
-    pca = PCA(n_components=0.8)
+    pca = PCA(n_components=0.2)
     train_x = pca.fit_transform(train_x)
     test_x = pca.transform(test_x)
-    print("PCA+++++++++++++")
-    print(train_x.shape)
     # 将降维后的数据进行返回
     return train_x, test_x
 
@@ -243,6 +243,79 @@ def singleKNN(train_data,train_y,test_data,test_y):
     plotAcc("K = 5", classAcc[1])
     plotAcc("K = 6", classAcc[2])
 
+
+#最优参数n_neighbors:5 (precision).
+#最优参数n_neighbors:9 (recall).
+def allKNN(trainX,trainY,testX,testY):
+    tuned_parameters = [{'n_neighbors':[3,4,5,6,7,8,9]}]
+    scores = ['precision', 'recall']
+    for score in scores:
+        print("# Tuning hyper-parameters for %s" % score)
+        # 调用 GridSearchCV，将 KNeighborsClassifier, tuned_parameters, cv=5, 还有 scoring 传递进去，
+        clf= GridSearchCV(KNeighborsClassifier(), tuned_parameters, cv=5,
+                     scoring='%s_macro' % score)
+        # 用训练集训练这个学习器 clf
+        clf.fit(trainX, trainY)
+        print("Best parameters set found on development set:")
+        # 再调用 clf.best_params_ 就能直接得到最好的参数搭配结果
+        print(clf.best_params_)
+        print("Grid scores on development set:")
+        means = clf.cv_results_['mean_test_score']
+        stds = clf.cv_results_['std_test_score']
+        # 看一下具体的参数间不同数值的组合后得到的分数是多少
+        for mean, std, params in zip(means, stds, clf.cv_results_['params']):
+            print("%0.3f (+/-%0.03f) for %r"
+                  % (mean, std * 2, params))
+        print("Detailed classification report:")
+        print("The model is trained on the full development set.")
+        print("The scores are computed on the full evaluation set.")
+        print()
+        y_true, y_pred = testY, clf.predict(testX)
+
+        # 打印在测试集上的预测结果与真实值的分数
+        print(classification_report(y_true, y_pred))
+
+
+#使用SVM对53个通道的信号平均值进行处理，采用网格搜索法进行调优，进行交叉验证
+#生成测试报告
+# {'C': 100, 'gamma': 0.001, 'kernel': 'rbf'}
+# {'C': 1, 'kernel': 'linear'}
+#最佳参数 kernel = rbf, C = 800, gamma = 0.001
+def allSVM(trainX,trainY,testX,testY):
+    tuned_parameters = [{'estimator__kernel': ['rbf'], 'estimator__gamma': [1e-3, 1e-4],
+                         'estimator__C': [ 100,200,400,800,1000]},
+                        {'estimator__kernel': ['linear'], 'estimator__C': [1,2,4,8]},
+                        ]
+    scores = ['precision', 'recall']
+    for score in scores:
+        print("# Tuning hyper-parameters for %s" % score)
+        # 调用 GridSearchCV，将 SVC(), tuned_parameters, cv=5, 还有 scoring 传递进去，
+        model= OneVsRestClassifier(SVC())
+            #, tuned_parameters, cv=5,                     scoring='%s_macro' % score)
+        clf = GridSearchCV(model,param_grid= tuned_parameters,cv=5,
+                     scoring='%s_macro' % score)
+
+        # 用训练集训练这个学习器 clf
+        clf.fit(trainX, trainY)
+        print("Best parameters set found on development set:")
+        # 再调用 clf.best_params_ 就能直接得到最好的参数搭配结果
+        print(clf.best_params_)
+        print("Grid scores on development set:")
+        means = clf.cv_results_['mean_test_score']
+        stds = clf.cv_results_['std_test_score']
+        # 看一下具体的参数间不同数值的组合后得到的分数是多少
+        for mean, std, params in zip(means, stds, clf.cv_results_['params']):
+            print("%0.3f (+/-%0.03f) for %r"
+                  % (mean, std * 2, params))
+        print("Detailed classification report:")
+        print("The model is trained on the full development set.")
+        print("The scores are computed on the full evaluation set.")
+        print()
+        y_true, y_pred = testY, clf.predict(testX)
+
+        # 打印在测试集上的预测结果与真实值的分数
+        print(classification_report(y_true, y_pred))
+
 def plotSingle(dataX):
     count = len(dataX)
     for i in range(53):
@@ -260,11 +333,43 @@ def plotSingle(dataX):
             plt.plot(x,dataX[j,1,:,i])
         plt.subplot(3, 1, 3)
         plt.xlabel("Time/s")
-        plt.ylabel("Total-Hb/mMmmy")
+        plt.ylabel("Total-Hb/mMmm")
         for j in range(count):
             plt.plot(x,dataX[j,2,:,i])
         #plt.legend()
         plt.savefig("D:\各通道原始数据图\\"+channel+".png")
+
+def pcaSVM(trainX,trainY,testX,testY):
+    trainX, testX = mulPca(trainX,testX)
+    random_state = np.random.RandomState(0)
+    svmModel1 = OneVsRestClassifier(svm.SVC(kernel='rbf', C=500, probability=True, gamma = 0.001,random_state=random_state))
+    scores = cross_val_score(svmModel1,trainX,trainY,cv = 10)
+    print("PCA+SVM--Validation: Accuracy: %0.2f (+/- %0.2f)" % (scores.mean(), scores.std() * 2))
+    svmModel2 = OneVsRestClassifier(svm.SVC(kernel='rbf', C=500, probability=True, gamma=0.001, random_state=random_state))
+    clf = svmModel2.fit(trainX,trainY)
+    print("PCA+SVM--Test:Accuracy:")
+    print(clf.score(testX,testY))
+    y_predict = clf.predict(testX)
+    # 打印在测试集上的预测结果与真实值的分数
+    print(classification_report(testY, y_predict))
+    #生成混淆矩阵
+    print(confusion_matrix(testY,y_predict))
+
+def pcaKNN(trainX, trainY, testX, testY):
+    trainX, testX = mulPca(trainX, testX)
+    random_state = np.random.RandomState(0)
+    knnModel1 = KNeighborsClassifier(n_neighbors=5)
+    scores = cross_val_score(knnModel1, trainX, trainY, cv=10)
+    print("PCA+SVM--Validation: Accuracy: %0.2f (+/- %0.2f)" % (scores.mean(), scores.std() * 2))
+    knnModel2 = KNeighborsClassifier(n_neighbors=5)
+    clf = knnModel2.fit(trainX, trainY)
+    print("PCA+SVM--Test:Accuracy:")
+    print(clf.score(testX, testY))
+    y_predict = clf.predict(testX)
+    # 打印在测试集上的预测结果与真实值的分数
+    print(classification_report(testY, y_predict))
+    # 生成混淆矩阵
+    print(confusion_matrix(testY, y_predict))
 
 #TempDataset
 #DepressionDataset - 2
@@ -275,17 +380,41 @@ if __name__=="__main__":
     train_x, test_x, train_y, test_y = train_test_split(dataX, dataY, test_size=0.3)
     averageTrainX = averageFeature(train_x)
     averateTestX = averageFeature(test_x)
-    #对单个通道使用SVM分别进行分类，观察每个通道的有效性
+    '''
+    对单个通道使用SVM分别进行分类，观察每个通道的有效性
+    '''
     #singleSVM(averageTrainX,train_y,averateTestX,test_y)
-    # 对单个通道使用KNN分别进行分类，观察每个通道的有效性
+
+    '''
+    对单个通道使用KNN分别进行分类，观察每个通道的有效性
+    '''
     #singleKNN(averageTrainX, train_y, averateTestX, test_y)
+
+    #每个通道原始图
     # plotSingle(dataX)
 
+    '''
+    使用SVM对53个通道的信号平均值进行处理，采用网格搜索法进行调优
+    生成测试报告,网格搜索寻找最优参数
+    '''
+    #allSVM(averageTrainX, train_y, averateTestX, test_y)
 
+    '''
+    使用KNN对53个通道的信号平均值进行处理，采用网格搜索法进行调优
+    生成测试报告，网格搜索寻找最优参数
+    '''
+    #allKNN(averageTrainX, train_y, averateTestX, test_y)
 
+    '''
+    PCA+SVM ，首先对数据进行PCA降维，然后利用最优参数进行分类，生成测试报告和混淆矩阵
+    '''
+    pcaSVM(averageTrainX[:,:53], train_y, averateTestX[:,:53
+                                          ], test_y)
 
-
-
+    '''
+    PCA+KNN ，首先对数据进行PCA降维，然后利用最优参数进行分类，生成测试报告和混淆矩阵
+    '''
+    #pcaKNN(averageTrainX, train_y, averateTestX, test_y)
 
 
 
